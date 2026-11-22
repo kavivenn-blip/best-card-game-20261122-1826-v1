@@ -29,17 +29,28 @@ writeFileSync(
   }),
 );
 
-// G15: set mode berkas secara eksplisit. Umask lingkungan di sini 0007,
-// sehingga salinan keluar 660/770 tanpa ini; juri/grader butuh file 0644
-// dan folder 0755 di sandbox mana pun, jadi tetapkan lewat chmodSync.
+// G15 (putaran 2): tetapkan mode isi /output secara eksplisit. Umask
+// lingkungan di sini 0007, sehingga salinan keluar 660/770 tanpa ini;
+// juri/grader butuh file 0644 dan folder 0755 di sandbox mana pun.
+// PENTING: direktori root /output ITU SENDIRI tidak pernah di-chmod:
+// di sandbox grader /output writable oleh user 65534 tapi BUKAN miliknya,
+// sehingga chmod root ditolak EPERM dan menggagalkan run (grade run V1
+// gagal run_completes karena ini). Hanya isi yang dibuat main.ts di
+// dalam /output yang di-chmod, dan tiap chmodSync dibungkus try/catch
+// agar satu EPERM pada satu entri tidak pernah menggagalkan run.
 function chmodTree(dir: string): void {
-  chmodSync(dir, 0o755);
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
-    if (statSync(p).isDirectory()) {
-      chmodTree(p);
-    } else {
-      chmodSync(p, 0o644);
+    try {
+      if (statSync(p).isDirectory()) {
+        chmodSync(p, 0o755);
+        chmodTree(p);
+      } else {
+        chmodSync(p, 0o644);
+      }
+    } catch {
+      // Abaikan: entri yang bukan milik proses ini (mis. root /output
+      // milik grader) tidak boleh menggagalkan run; mode bawaannya cukup.
     }
   }
 }
